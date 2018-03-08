@@ -1,0 +1,13 @@
+{
+	"name": "sane",
+	"targetType": "library",
+	"authors": [
+		"Duncan Paterson"
+	],
+	"libs": [
+		"sane"
+	],
+	"description": "A sane interface to sane",
+	"copyright": "Copyright © 2018, Duncan Paterson",
+	"license": "MIT"
+}

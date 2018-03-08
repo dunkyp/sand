@@ -1,0 +1,6 @@
+#include <sane.h>
+
+int main() {
+    
+    return 0;
+}

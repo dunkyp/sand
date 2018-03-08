@@ -1,0 +1,14 @@
+.dub
+docs.json
+__dummy.html
+docs/
+sane.so
+sane.dylib
+sane.dll
+sane.a
+sane.lib
+sane-test-*
+*.exe
+*.o
+*.obj
+*.lst
