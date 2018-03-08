@@ -1,6 +1,6 @@
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libsane
+  - sudo apt-get install -y libsane-dev
   - sudo sh -c 'echo "test" > /etc/sane.d/dll.conf'
 
 language: d
