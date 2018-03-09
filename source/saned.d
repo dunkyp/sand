@@ -74,6 +74,21 @@ class Device {
             size++;
         m_options = iota(size).map!(i => new Option(handle, i)).array;
     }
+
+    auto readImage() {
+        sane_start(handle);
+        SANE_Parameters params;
+        enforce(sane_get_parameters(handle, &params) == SANE_Status.SANE_STATUS_GOOD);
+        auto totalBytes = params.lines * params.bytes_per_line;
+        ubyte[] data = new ubyte[totalBytes];
+        int length, offset;
+        SANE_Status status;
+        do {
+            status = sane_read(handle, data.ptr, totalBytes, &length);
+            offset += length;
+        } while (status == SANE_Status.SANE_STATUS_GOOD);
+        return data;
+    }
 }
 
 class Option {
@@ -154,4 +169,5 @@ unittest {
     assert(devices[0].options[3].value == 16);
     assert(devices[0].options[3].settable);
     assert(devices[0].options[3].active);
+    devices[0].readImage();
 }
