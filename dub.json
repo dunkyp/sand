@@ -1,5 +1,5 @@
 {
-	"name": "sane",
+	"name": "sand",
 	"targetType": "library",
 	"authors": [
 		"Duncan Paterson"
@@ -7,7 +7,7 @@
 	"libs": [
 		"sane"
 	],
-	"description": "A sane interface to sane",
+	"description": "A D interface to sane (Scanner Access Now D)",
 	"copyright": "Copyright © 2018, Duncan Paterson",
 	"license": "MIT"
 }

@@ -1,4 +1,4 @@
-module sane.sane;
+module sand.sane;
 
 /* sane - Scanner Access Now Easy.
    Copyright (C) 1997-1999 David Mosberger-Tang and Andreas Beck

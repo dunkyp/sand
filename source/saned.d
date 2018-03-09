@@ -1,8 +1,8 @@
-module sane.saned;
+module sand.saned;
 
-import sane.sane;
+import sand.sane;
 import std.exception : enforce;
-import std.algorithm.iteration;
+import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.variant;
 
 // A somewhat sane interface to sane
@@ -55,7 +55,11 @@ class Device {
         this.device = device;
         sane_open(device.name, &handle);
     }
-    
+
+    override string toString() {
+        return format("SANE Device: %s - %s", vendor, model);
+    }
+
     @property auto options() {
         if(!open) {
             populateOptions();
@@ -68,25 +72,59 @@ class Device {
         auto size = 0;
         while(sane_get_option_descriptor(handle, size))
             size++;
-        m_options = iota(size).map!(i => new Option(handle, sane_get_option_descriptor(handle, i), i)).array;
+        m_options = iota(size).map!(i => new Option(handle, i)).array;
     }
 }
 
 class Option {
-    const SANE_Option_Descriptor* descriptor;
     int number;
     const string name;
     const string title;
     const string description;
+    const string unit;
     private SANE_Handle handle;
 
-    this(SANE_Handle handle, const SANE_Option_Descriptor* descriptor, int number) {
-        this.descriptor = descriptor;
+    this(SANE_Handle handle, int number) {
         this.number = number;
+        auto descriptor = sane_get_option_descriptor(handle, number);
         name = to!string((*descriptor).name);
         title = to!string((*descriptor).title);
         description = to!string((*descriptor).desc);
+        unit = unitToString(descriptor.unit);
         this.handle = handle;
+    }
+
+    override string toString() {
+        return format("Option:\nName: %s\nTitle: %s\nDescription: %s\nUnit: %s", name, title, description, unit);
+    }
+
+    private string unitToString(SANE_Unit unit) {
+        switch(unit) {
+        case SANE_Unit.SANE_UNIT_NONE:
+            return "(none)";
+        case SANE_Unit.SANE_UNIT_PIXEL:
+            return "pixels";
+        case SANE_Unit.SANE_UNIT_BIT:
+            return "bits";
+        case SANE_Unit.SANE_UNIT_MM:
+            return "millimetres";
+        case SANE_Unit.SANE_UNIT_DPI:
+            return "dots per inch";
+        case SANE_Unit.SANE_UNIT_PERCENT:
+            return "percentage";
+        case SANE_Unit.SANE_UNIT_MICROSECOND:
+            return "microseconds";
+        default:
+            assert(0);
+        }
+    }
+
+    @property bool settable() {
+        return SANE_OPTION_IS_SETTABLE(sane_get_option_descriptor(handle, number).cap);
+    }
+
+    @property bool active() {
+        return SANE_OPTION_IS_ACTIVE(sane_get_option_descriptor(handle, number).cap);
     }
 
     @property auto value() {
@@ -109,7 +147,11 @@ unittest {
     auto s = new Sane();
     s.init();
     auto devices = s.devices();
+    writeln(devices[0]);
+    writeln(devices[0].options[3]);
     assert(devices[0].options[3].value == 8);
     devices[0].options[3].value = 16;
     assert(devices[0].options[3].value == 16);
+    assert(devices[0].options[3].settable);
+    assert(devices[0].options[3].active);
 }
