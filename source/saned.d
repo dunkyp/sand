@@ -1,7 +1,7 @@
 module sand.saned;
 
 import sand.sane;
-import std.exception : enforce;
+import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.variant;
 
@@ -110,7 +110,8 @@ class Option {
     }
 
     override string toString() {
-        return format("Option:\nName: %s\nTitle: %s\nDescription: %s\nUnit: %s", name, title, description, unit);
+        return format("Option:\nName: %s\nTitle: %s\nDescription: %s\nUnit: %s" ~
+                      "\nSettable: %s\nActive: %s", name, title, description, unit, settable(), active());
     }
 
     private string unitToString(SANE_Unit unit) {
@@ -151,6 +152,8 @@ class Option {
     }
 
     @property void value(int v) {
+        if(!settable())
+            throw new Exception("Option is not settable");
         sane_get_option_descriptor(handle, number);
         auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
@@ -163,11 +166,12 @@ unittest {
     s.init();
     auto devices = s.devices();
     writeln(devices[0]);
-    writeln(devices[0].options[3]);
+    writeln(devices[0].options[0]);
     assert(devices[0].options[3].value == 8);
     devices[0].options[3].value = 16;
     assert(devices[0].options[3].value == 16);
     assert(devices[0].options[3].settable);
     assert(devices[0].options[3].active);
     devices[0].readImage();
+    assertThrown(devices[0].options[0].value = 5);
 }
