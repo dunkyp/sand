@@ -4,6 +4,7 @@ import sand.sane;
 import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.variant;
+import std.algorithm: canFind;
 
 // A somewhat sane interface to sane
 class Sane {
@@ -154,9 +155,34 @@ class Option {
     @property void value(int v) {
         if(!settable())
             throw new Exception("Option is not settable");
+        if(!meetsConstraint(v))
+            throw new Exception("Value doesn't meet constriant");
         sane_get_option_descriptor(handle, number);
         auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
+    }
+
+    private bool meetsConstraint(T)(T value) {
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        switch(descriptor.constraint_type) {            
+        case SANE_Constraint_Type.SANE_CONSTRAINT_NONE:
+            return true;
+        case SANE_Constraint_Type.SANE_CONSTRAINT_RANGE:
+            auto range = descriptor.constraint.range;
+            if(value < range.min || value > range.max)
+                return false;
+            if((range.quant * value + range.min) <= range.max)
+                return true;
+            return false;
+        case SANE_Constraint_Type.SANE_CONSTRAINT_WORD_LIST:
+            auto count = *descriptor.constraint.word_list;
+            auto wordList = descriptor.constraint.word_list[1..count + 1];
+            return wordList.canFind(value);
+        case SANE_Constraint_Type.SANE_CONSTRAINT_STRING_LIST:
+            return true;
+        default:
+            assert(0);
+        }
     }
 }
 
@@ -166,7 +192,6 @@ unittest {
     s.init();
     auto devices = s.devices();
     writeln(devices[0]);
-    writeln(devices[0].options[0]);
     assert(devices[0].options[3].value == 8);
     devices[0].options[3].value = 16;
     assert(devices[0].options[3].value == 16);
