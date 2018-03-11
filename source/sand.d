@@ -4,7 +4,7 @@ import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.utf;
 import std.algorithm: canFind;
 
-// A somewhat sane interface to sane
+/** The D interface to SANE */
 class Sane {
     int versionMajor, versionMinor, versionBuild;
     Device[] m_devices;
@@ -24,6 +24,11 @@ class Sane {
         SANE_VERSION_CODE(versionMajor, versionMinor, versionBuild);
     }
 
+    /**
+     * Get list of devices connected to this machine
+     * Params:
+     *   force = recheck all devices
+     */
     auto devices(bool force=false) {
     	if(!m_devices.length || force) {
            SANE_Device** device_list;
@@ -60,6 +65,7 @@ class Device {
         return format("SANE Device: %s - %s", vendor, model);
     }
 
+    /** Get options */
     @property auto options() {
         if(!open) {
             populateOptions();
@@ -68,6 +74,7 @@ class Device {
         return m_options;
     }
 
+    /** Get current scan parameters */
     @property auto parameters() {
         SANE_Parameters p;
         sane_get_parameters(handle, &p);
@@ -81,6 +88,10 @@ class Device {
         m_options = iota(size).map!(i => new Option(handle, i)).array;
     }
 
+    /** 
+     * Blocking operation!
+     * Returns: A new buffer with image data
+     */
     auto readImage() {
         sane_start(handle);
         SANE_Parameters params;
@@ -157,6 +168,9 @@ class Option {
         return value;
     }
 
+    /**
+     * Set property value
+     */
     @property void value(T)(T value) {
         if(!settable())
             throw new Exception("Option is not settable");
