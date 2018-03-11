@@ -3,9 +3,10 @@ module sand.saned;
 import sand.sane;
 import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
-import std.conv, std.range, std.variant;
+import std.conv, std.range, std.utf;
 import std.algorithm: canFind;
 
+import std.stdio;
 // A somewhat sane interface to sane
 class Sane {
     int versionMajor, versionMinor, versionBuild;
@@ -152,13 +153,18 @@ class Option {
         return value;
     }
 
-    @property void value(int v) {
+    @property void value(T)(T value) {
         if(!settable())
             throw new Exception("Option is not settable");
-        if(!meetsConstraint(v))
+        if(!meetsConstraint(value))
             throw new Exception("Value doesn't meet constriant");
         sane_get_option_descriptor(handle, number);
-        auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
+        static if(is(typeof(value) == string)) {
+            auto s = toUTFz!(char*)(value);
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, s, null);
+        } else {
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &value, null);
+        }
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
     }
 
@@ -178,10 +184,24 @@ class Option {
             auto count = *descriptor.constraint.word_list;
             auto wordList = descriptor.constraint.word_list[1..count + 1];
             return wordList.canFind(value);
-        case SANE_Constraint_Type.SANE_CONSTRAINT_STRING_LIST:
-            return true;
         default:
-            assert(0);
+            throw new Exception("Value doesn't meet constraint");
+        }
+    }
+
+    private bool meetsConstraint(string value) {
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        switch(descriptor.constraint_type) {            
+        case SANE_Constraint_Type.SANE_CONSTRAINT_STRING_LIST:
+            string[] stringList;
+            int position = 0;
+            while(*(descriptor.constraint.string_list + position)) {
+                stringList ~= to!string(*(descriptor.constraint.string_list + position));
+                position++;
+            }
+            return stringList.canFind(value);
+        default:
+            throw new Exception("Can't enfore constraint");
         }
     }
 }
@@ -191,7 +211,8 @@ unittest {
     auto s = new Sane();
     s.init();
     auto devices = s.devices();
-    writeln(devices[0]);
+    devices[0].options[2].value = "Gray";
+    assertThrown(devices[0].options[2].value = "Grey");
     assert(devices[0].options[3].value == 8);
     devices[0].options[3].value = 16;
     assert(devices[0].options[3].value == 16);
