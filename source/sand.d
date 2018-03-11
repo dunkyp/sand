@@ -1,25 +1,23 @@
-module sand.saned;
-
-import sand.sane;
+import sane;
 import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.utf;
 import std.algorithm: canFind;
 
-import std.stdio;
 // A somewhat sane interface to sane
 class Sane {
     int versionMajor, versionMinor, versionBuild;
     Device[] m_devices;
 
     this() {
+        init();
     }
 
     ~this() {
         sane_exit();
     }
 
-    void init() {
+    private void init() {
         int api_version;
         auto status = sane_init(&api_version, null);
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
@@ -68,6 +66,12 @@ class Device {
             open = true;
         }
         return m_options;
+    }
+
+    @property auto parameters() {
+        SANE_Parameters p;
+        sane_get_parameters(handle, &p);
+        return p;
     }
 
     private void populateOptions() {
@@ -158,7 +162,7 @@ class Option {
             throw new Exception("Option is not settable");
         if(!meetsConstraint(value))
             throw new Exception("Value doesn't meet constriant");
-        sane_get_option_descriptor(handle, number);
+        auto descriptor = sane_get_option_descriptor(handle, number);
         static if(is(typeof(value) == string)) {
             auto s = toUTFz!(char*)(value);
             auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, s, null);
@@ -207,9 +211,7 @@ class Option {
 }
 
 unittest {
-    import std.stdio;
     auto s = new Sane();
-    s.init();
     auto devices = s.devices();
     devices[0].options[2].value = "Gray";
     assertThrown(devices[0].options[2].value = "Grey");

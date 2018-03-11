@@ -1,5 +1,3 @@
-module sand.sane;
-
 /* sane - Scanner Access Now Easy.
    Copyright (C) 1997-1999 David Mosberger-Tang and Andreas Beck
    This file is part of the SANE package.

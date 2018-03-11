@@ -1,0 +1,7 @@
+{
+    "name": "basic-sand",
+    "description": "An example project",
+    "dependencies": {
+        "sand": {"path": "../../"}
+    }
+}
