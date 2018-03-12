@@ -6,8 +6,7 @@
 
 SAND provides a D interface to the SANE (Scanner Access Now Easy) C API. The interface is designed to be easy to read and safe to use.
 
-```
-d
+```d
 // Initialise sane interface
 auto sane = new Sane();
     
