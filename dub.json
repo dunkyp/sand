@@ -9,5 +9,5 @@
 	],
 	"description": "A D interface to sane (Scanner Access Now D)",
 	"copyright": "Copyright © 2018, Duncan Paterson",
-	"license": "MIT"
+	"license": "BSD 3-clause"
 }
