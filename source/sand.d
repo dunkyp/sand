@@ -160,6 +160,10 @@ class Option {
         return SANE_OPTION_IS_ACTIVE(sane_get_option_descriptor(handle, number).cap);
     }
 
+    @property bool group() {
+        return sane_get_option_descriptor(handle, number).type == SANE_Value_Type.SANE_TYPE_GROUP;
+    }
+
     @property auto value() {
         sane_get_option_descriptor(handle, number);
         int value;
@@ -236,4 +240,6 @@ unittest {
     assert(devices[0].options[3].active);
     devices[0].readImage();
     assertThrown(devices[0].options[0].value = 5);
+    assert(devices[0].options[1].group);
+    assert(!devices[0].options[2].group);
 }
