@@ -75,7 +75,7 @@ class Device {
     }
 
     /** Get current scan parameters */
-    @property auto parameters() {
+    @property const(SANE_Parameters) parameters() {
         SANE_Parameters p;
         sane_get_parameters(handle, &p);
         return p;
@@ -152,19 +152,20 @@ class Option {
         }
     }
 
-    @property bool settable() {
+    @property const(bool) settable() {
         return SANE_OPTION_IS_SETTABLE(sane_get_option_descriptor(handle, number).cap);
     }
 
-    @property bool active() {
+    @property const(bool) active() {
         return SANE_OPTION_IS_ACTIVE(sane_get_option_descriptor(handle, number).cap);
     }
 
-    @property bool group() {
+    @property const(bool) group() {
         return sane_get_option_descriptor(handle, number).type == SANE_Value_Type.SANE_TYPE_GROUP;
     }
 
-    @property auto value() {
+    @property const(int) value() {
+	// TODO: fix this for other types
         sane_get_option_descriptor(handle, number);
         int value;
         auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_GET_VALUE, &value, null);
