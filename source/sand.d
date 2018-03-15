@@ -114,6 +114,7 @@ class Option {
     const string title;
     const string description;
     const string unit;
+    const SANE_Value_Type type;
     private SANE_Handle handle;
 
     this(SANE_Handle handle, int number) {
@@ -123,6 +124,7 @@ class Option {
         title = to!string((*descriptor).title);
         description = to!string((*descriptor).desc);
         unit = unitToString(descriptor.unit);
+	type = descriptor.type;
         this.handle = handle;
     }
 
