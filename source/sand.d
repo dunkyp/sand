@@ -30,15 +30,15 @@ class Sane {
      *   force = recheck all devices
      */
     auto devices(bool force=false) {
-    	if(!m_devices.length || force) {
-           SANE_Device** device_list;
-           auto status = sane_get_devices(&device_list, true);
-           auto size = 0;
-           while(*(device_list + size))
-               size++;
+        if(!m_devices.length || force) {
+            SANE_Device** device_list;
+            auto status = sane_get_devices(&device_list, true);
+            auto size = 0;
+            while(*(device_list + size))
+                size++;
             m_devices =  device_list[0 .. size].map!(device => new Device(device)).array;
-	}
-	return m_devices;
+        }
+        return m_devices;
     }
 }
 
@@ -75,7 +75,7 @@ class Device {
     }
 
     /** Get current scan parameters */
-    @property const(SANE_Parameters) parameters() {
+    @property auto parameters() {
         SANE_Parameters p;
         sane_get_parameters(handle, &p);
         return p;
@@ -108,13 +108,21 @@ class Device {
     }
 }
 
+enum ValueType {
+                BOOL = 0,
+                GROUP = 1,
+                INT = 2,
+                FIXED = 3,
+                STRING = 4,
+                BUTTON = 5
+}
+
 class Option {
     int number;
     const string name;
     const string title;
     const string description;
     const string unit;
-    const SANE_Value_Type type;
     private SANE_Handle handle;
 
     this(SANE_Handle handle, int number) {
@@ -124,7 +132,6 @@ class Option {
         title = to!string((*descriptor).title);
         description = to!string((*descriptor).desc);
         unit = unitToString(descriptor.unit);
-	type = descriptor.type;
         this.handle = handle;
     }
 
@@ -163,11 +170,30 @@ class Option {
     }
 
     @property const(bool) group() {
-        return sane_get_option_descriptor(handle, number).type == SANE_Value_Type.SANE_TYPE_GROUP;
+        return type() == ValueType.GROUP;
+    }
+
+    @property const(ValueType) type() {
+        auto type = sane_get_option_descriptor(handle, number).type;
+        switch(type) {
+        case SANE_Value_Type.SANE_TYPE_BOOL:
+            return ValueType.BOOL;
+        case SANE_Value_Type.SANE_TYPE_GROUP:
+            return ValueType.GROUP;
+        case SANE_Value_Type.SANE_TYPE_INT:
+            return ValueType.INT;
+        case SANE_Value_Type.SANE_TYPE_FIXED:
+            return ValueType.FIXED;
+        case SANE_Value_Type.SANE_TYPE_STRING:
+            return ValueType.STRING;
+        case SANE_Value_Type.SANE_TYPE_BUTTON:
+            return ValueType.BUTTON;
+        default:
+	    throw new Exception("Unknown Type");
+        }
     }
 
     @property const(int) value() {
-	// TODO: fix this for other types
         sane_get_option_descriptor(handle, number);
         int value;
         auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_GET_VALUE, &value, null);
