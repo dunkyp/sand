@@ -219,6 +219,22 @@ class Option {
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
     }
 
+    @property char*[] strings() {
+        string[] stringList;
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        switch(descriptor.constraint_type) {            
+        case SANE_Constraint_Type.SANE_CONSTRAINT_STRING_LIST:
+            int position = 0;
+            while(*(descriptor.constraint.string_list + position)) {
+                stringList ~= *(descriptor.constraint.string_list + position);
+                position++;
+            }
+        default:
+            assert(0);
+        }
+        return stringList;
+    }
+
     private bool meetsConstraint(T)(T value) {
         auto descriptor = sane_get_option_descriptor(handle, number);
         switch(descriptor.constraint_type) {            
