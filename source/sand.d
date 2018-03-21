@@ -3,6 +3,8 @@ import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.utf;
 import std.algorithm: canFind;
+import std.stdio;
+import std.traits;
 
 /** The D interface to SANE */
 class Sane {
@@ -42,6 +44,23 @@ class Sane {
     }
 }
 
+enum Format {
+    GREY = 0,
+    RGB = 1,
+    RED = 2,
+    GREEN = 3,
+    BLUE = 4
+}
+
+struct Parameters {
+    Format frame;
+    bool lastFrame;
+    uint bytesPerLine;
+    uint pixelsPerLine;
+    uint lines;
+    uint bitdepth;
+}
+
 class Device {
     string name;
     string vendor;
@@ -75,10 +94,16 @@ class Device {
     }
 
     /** Get current scan parameters */
-    @property auto parameters() {
+    @property Parameters parameters() {
         SANE_Parameters p;
         sane_get_parameters(handle, &p);
-        return p;
+        auto parameters = Parameters(cast(Format)p.format,
+                                     cast(bool)p.last_frame,
+                                     p.bytes_per_line,
+                                     p.pixels_per_line,
+                                     p.lines,
+                                     p.depth);
+        return parameters;
     }
 
     private void populateOptions() {
@@ -101,7 +126,8 @@ class Device {
         int length, offset;
         SANE_Status status;
         do {
-            status = sane_read(handle, data.ptr, totalBytes, &length);
+            ubyte* ptr = data.ptr + offset;
+            status = sane_read(handle, ptr, totalBytes, &length);
             offset += length;
         } while (status == SANE_Status.SANE_STATUS_GOOD);
         return data;
@@ -109,12 +135,19 @@ class Device {
 }
 
 enum ValueType {
-                BOOL = 0,
-                GROUP = 1,
-                INT = 2,
-                FIXED = 3,
-                STRING = 4,
-                BUTTON = 5
+    BOOL = 0,
+    GROUP = 1,
+    INT = 2,
+    FIXED = 3,
+    STRING = 4,
+    BUTTON = 5
+}
+
+enum ConstraintType {
+    NONE = 0,
+    RANGE = 1,
+    WORD_LIST = 2,
+    STRING_LIST = 3
 }
 
 class Option {
@@ -193,12 +226,46 @@ class Option {
         }
     }
 
-    @property const(int) value() {
-        sane_get_option_descriptor(handle, number);
-        int value;
-        auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_GET_VALUE, &value, null);
+    @property const(T) max(T)() {
+        static if(is(T == double)) {
+            return SANE_UNFIX(sane_get_option_descriptor(handle, number).constraint.range.max);
+        } else {
+            return sane_get_option_descriptor(handle, number).constraint.range.max;
+        }
+    }
+
+    @property const(T) min(T)() {
+        static if(is(T == double)) {
+            return SANE_UNFIX(sane_get_option_descriptor(handle, number).constraint.range.min);
+        } else {
+            return sane_get_option_descriptor(handle, number).constraint.range.min;
+        }
+    }
+
+    @property const(T) quant(T)() {
+        static if(is(T == double)) {
+            return SANE_UNFIX(sane_get_option_descriptor(handle, number).constraint.range.quant);
+        } else {
+            return sane_get_option_descriptor(handle, number).constraint.range.quant;
+        }
+    }
+
+    @property const(T) value(T)() {
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        char[] space = new char[descriptor.size];
+        auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_GET_VALUE, space.ptr, null);
         enforce(status == SANE_Status.SANE_STATUS_GOOD);
-        return value;
+        static if(is(T == string)) {
+            return to!string(cast(char*)(space));
+        } else static if(is(T == double)) {
+            return SANE_UNFIX(*(cast(SANE_Fixed*)(space.ptr)));
+        }
+        else static if(isPointer!T) {
+            return cast(T)(space.ptr);
+        } else {
+            auto value = cast(T*)(space.ptr);
+            return *value;
+        }
     }
 
     /**
@@ -210,17 +277,27 @@ class Option {
         if(!meetsConstraint(value))
             throw new Exception("Value doesn't meet constriant");
         auto descriptor = sane_get_option_descriptor(handle, number);
-        static if(is(typeof(value) == string)) {
-            auto s = toUTFz!(char*)(value);
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, s, null);
-        } else {
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &value, null);
+        static if(is(T == string)) {
+            auto v = cast(char*)value.toStringz();
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, v, null);
+            enforce(status == SANE_Status.SANE_STATUS_GOOD);
+        } else static if(is(T == double)) {
+            auto v = SANE_FIX(value);
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
+            enforce(status == SANE_Status.SANE_STATUS_GOOD);
+        } else static if(is(T == bool)) {
+            auto v = cast(int)value;
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
+            enforce(status == SANE_Status.SANE_STATUS_GOOD);
         }
-        enforce(status == SANE_Status.SANE_STATUS_GOOD);
+        else {
+            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &value, null);
+            enforce(status == SANE_Status.SANE_STATUS_GOOD);
+        }
     }
 
-    @property char*[] strings() {
-        string[] stringList;
+    @property const(char*)[] strings() {
+        const(char*)[] stringList;
         auto descriptor = sane_get_option_descriptor(handle, number);
         switch(descriptor.constraint_type) {            
         case SANE_Constraint_Type.SANE_CONSTRAINT_STRING_LIST:
@@ -229,10 +306,22 @@ class Option {
                 stringList ~= *(descriptor.constraint.string_list + position);
                 position++;
             }
+            break;
         default:
             assert(0);
         }
         return stringList;
+    }
+
+    @property const(int)[] words() {
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        int length = *(descriptor.constraint.word_list);
+        return descriptor.constraint.word_list[1..length + 1].array;
+    }
+
+    @property ConstraintType constraintType() {
+        auto descriptor = sane_get_option_descriptor(handle, number);
+        return cast(ConstraintType)descriptor.constraint_type;
     }
 
     private bool meetsConstraint(T)(T value) {
@@ -242,11 +331,14 @@ class Option {
             return true;
         case SANE_Constraint_Type.SANE_CONSTRAINT_RANGE:
             auto range = descriptor.constraint.range;
-            if(value < range.min || value > range.max)
-                return false;
-            if((range.quant * value + range.min) <= range.max)
-                return true;
-            return false;
+            // if(range.quant != 0) {
+            //     if(value < range.min || value > range.max)
+            //         return false;
+            //     if((range.quant * value + range.min) <= range.max)
+            //         return true;
+            //     return false;
+            // }
+            return true;
         case SANE_Constraint_Type.SANE_CONSTRAINT_WORD_LIST:
             auto count = *descriptor.constraint.word_list;
             auto wordList = descriptor.constraint.word_list[1..count + 1];
@@ -276,13 +368,15 @@ class Option {
 unittest {
     auto s = new Sane();
     auto devices = s.devices();
-    devices[0].options[2].value = "Gray";
-    assertThrown(devices[0].options[2].value = "Grey");
-    assert(devices[0].options[3].value == 8);
+    assert(devices[0].options[3].value!int == 8);
     devices[0].options[3].value = 16;
-    assert(devices[0].options[3].value == 16);
+    assert(devices[0].options[3].value!int == 16);
     assert(devices[0].options[3].settable);
     assert(devices[0].options[3].active);
+
+    assert(devices[0].options[2].value!string == "Gray");
+    devices[0].options[2].value!string = "Gray";
+    assertThrown(devices[0].options[2].value = "Grey");
     devices[0].readImage();
     assertThrown(devices[0].options[0].value = 5);
     assert(devices[0].options[1].group);
