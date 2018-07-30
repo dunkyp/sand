@@ -6,9 +6,10 @@ import std.exception : enforce, assertThrown;
 import std.algorithm.iteration, std.string;
 import std.conv, std.range, std.utf;
 import std.algorithm: canFind;
-import std.algorithm.searching: find;
 import std.stdio;
 import std.traits;
+import core.thread;
+
 
 /** The D interface to SANE */
 class Sane {
@@ -74,6 +75,7 @@ class Device {
     private Option[] m_options;
     private SANE_Handle handle;
     private bool open;
+    bool scanning;
 
     this(SANE_Device* device) {
         name = to!string((*device).name);
@@ -114,19 +116,16 @@ class Device {
         auto size = 0;
         while(sane_get_option_descriptor(handle, size))
             size++;
-        m_options = iota(size).map!(i => new Option(handle, i)).array;
+        m_options = iota(size).map!(i => new Option(handle, i, this)).array;
     }
 
-    /** 
-     * Blocking operation!
-     * Returns: A new buffer with image data
-     */
-    auto readImage() {
+
+    ubyte[] readImage() {
         sane_start(handle);
         SANE_Parameters params;
         enforce(sane_get_parameters(handle, &params) == SANE_Status.SANE_STATUS_GOOD);
         auto totalBytes = params.lines * params.bytes_per_line;
-        ubyte[] data = new ubyte[totalBytes];
+        auto data = new ubyte[totalBytes];
         int length, offset;
         SANE_Status status;
         do {
@@ -135,6 +134,28 @@ class Device {
             offset += length;
         } while (status == SANE_Status.SANE_STATUS_GOOD);
         return data;
+    }
+
+
+    void readImageAsync(ref ubyte[] data, ref int bytesRead) {
+        this.scanning = true;
+        sane_start(this.handle);
+        bool nonBlocking;
+        enforce(SANE_Status.SANE_STATUS_GOOD == sane_set_io_mode(handle, 1));
+        SANE_Parameters params;
+        enforce(sane_get_parameters(handle, &params) == SANE_Status.SANE_STATUS_GOOD);
+        auto totalBytes = params.lines * params.bytes_per_line;
+        data = new ubyte[totalBytes];
+        int length, offset;
+        SANE_Status status;
+        do {
+            ubyte* ptr = data.ptr + offset;
+            status = sane_read(handle, ptr, totalBytes, &length);
+            offset += length;
+            bytesRead = offset;
+            Fiber.yield();
+        } while (status == SANE_Status.SANE_STATUS_GOOD);
+        this.scanning = false;
     }
 }
 
@@ -161,8 +182,9 @@ class Option {
     const string description;
     const string unit;
     private SANE_Handle handle;
+    Device parent;
 
-    this(SANE_Handle handle, int number) {
+    this(SANE_Handle handle, int number, Device parent) {
         this.number = number;
         auto descriptor = sane_get_option_descriptor(handle, number);
         name = to!string((*descriptor).name);
@@ -170,6 +192,7 @@ class Option {
         description = to!string((*descriptor).desc);
         unit = unitToString(descriptor.unit);
         this.handle = handle;
+        this.parent = parent;
     }
 
     override string toString() {
@@ -276,27 +299,29 @@ class Option {
      * Set property value
      */
     @property void value(T)(T value) {
-        if(!settable())
-            throw new Exception("Option is not settable");
-        if(!meetsConstraint(value))
-            throw new Exception("Value doesn't meet constriant");
-        auto descriptor = sane_get_option_descriptor(handle, number);
-        static if(is(T == string)) {
-            auto v = cast(char*)value.toStringz();
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, v, null);
-            enforce(status == SANE_Status.SANE_STATUS_GOOD);
-        } else static if(is(T == double)) {
-            auto v = SANE_FIX(value);
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
-            enforce(status == SANE_Status.SANE_STATUS_GOOD);
-        } else static if(is(T == bool)) {
-            auto v = cast(int)value;
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
-            enforce(status == SANE_Status.SANE_STATUS_GOOD);
-        }
-        else {
-            auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &value, null);
-            enforce(status == SANE_Status.SANE_STATUS_GOOD);
+        if(!this.parent.scanning) {
+            if(!settable())
+                throw new Exception("Option is not settable");
+            if(!meetsConstraint(value))
+                throw new Exception("Value doesn't meet constriant");
+            auto descriptor = sane_get_option_descriptor(handle, number);
+            static if(is(T == string)) {
+                auto v = cast(char*)value.toStringz();
+                auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, v, null);
+                enforce(status == SANE_Status.SANE_STATUS_GOOD);
+            } else static if(is(T == double)) {
+                auto v = SANE_FIX(value);
+                auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
+                enforce(status == SANE_Status.SANE_STATUS_GOOD);
+            } else static if(is(T == bool)) {
+                auto v = cast(int)value;
+                auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &v, null);
+                enforce(status == SANE_Status.SANE_STATUS_GOOD);
+            }
+            else {
+                auto status = sane_control_option(handle, number, SANE_Action.SANE_ACTION_SET_VALUE, &value, null);
+                enforce(status == SANE_Status.SANE_STATUS_GOOD);
+            }
         }
     }
 
@@ -381,7 +406,11 @@ unittest {
     assert(devices[0].options[2].value!string == "Gray");
     devices[0].options[2].value!string = "Gray";
     assertThrown(devices[0].options[2].value = "Grey");
-    devices[0].readImage();
+    ubyte[] data;
+    auto f = new Fiber(()=> devices[0].readImageAsync(data));
+    while(f.state != Fiber.State.TERM) {
+        f.call();
+    }
     assertThrown(devices[0].options[0].value = 5);
     assert(devices[0].options[1].group);
     assert(!devices[0].options[2].group);
