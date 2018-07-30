@@ -98,6 +98,7 @@ class Device {
         }
         return m_options;
     }
+    
 
     /** Get current scan parameters */
     @property Parameters parameters() {
@@ -196,8 +197,8 @@ class Option {
     }
 
     override string toString() {
-        return format("Option:\nName: %s\nTitle: %s\nDescription: %s\nUnit: %s" ~
-                      "\nSettable: %s\nActive: %s", name, title, description, unit, settable(), active());
+        return format("Option:\nNumber: %s\nName: %s\nTitle: %s\nDescription: %s\nUnit: %s" ~
+                      "\nSettable: %s\nActive: %s", number, name, title, description, unit, settable(), active());
     }
 
     private string unitToString(SANE_Unit unit) {
@@ -397,20 +398,33 @@ class Option {
 unittest {
     auto s = new Sane();
     auto devices = s.devices();
+
+    // Test option setting
     assert(devices[0].options[3].value!int == 8);
     devices[0].options[3].value = 16;
     assert(devices[0].options[3].value!int == 16);
     assert(devices[0].options[3].settable);
     assert(devices[0].options[3].active);
-
     assert(devices[0].options[2].value!string == "Gray");
     devices[0].options[2].value!string = "Gray";
     assertThrown(devices[0].options[2].value = "Grey");
+
+
+    // test non blocking io
+    // set to io to non blocking
+    devices[0].options[19].value!bool = true;
     ubyte[] data;
-    auto f = new Fiber(()=> devices[0].readImageAsync(data));
+    int readBytes = 0;
+    auto f = new Fiber(()=> devices[0].readImageAsync(data, readBytes));
     while(f.state != Fiber.State.TERM) {
         f.call();
     }
+    // reset to blocking IO
+    devices[0].options[19].value!bool = false;
+    // check image reading works
+    devices[0].readImage();
+    readBytes = 0;
+    
     assertThrown(devices[0].options[0].value = 5);
     assert(devices[0].options[1].group);
     assert(!devices[0].options[2].group);
