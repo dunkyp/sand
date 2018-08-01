@@ -122,6 +122,7 @@ class Device {
 
 
     ubyte[] readImage() {
+        sane_set_io_mode(handle, true);
         sane_start(handle);
         SANE_Parameters params;
         enforce(sane_get_parameters(handle, &params) == SANE_Status.SANE_STATUS_GOOD);
@@ -139,6 +140,7 @@ class Device {
 
 
     void readImageAsync(ref ubyte[] data, ref int bytesRead) {
+        scope(failure) { data = readImage(); this.scanning = false; return; }
         this.scanning = true;
         sane_start(this.handle);
         bool nonBlocking;
@@ -149,6 +151,7 @@ class Device {
         data = new ubyte[totalBytes];
         int length, offset;
         SANE_Status status;
+        Fiber.yield();
         do {
             ubyte* ptr = data.ptr + offset;
             status = sane_read(handle, ptr, totalBytes, &length);
