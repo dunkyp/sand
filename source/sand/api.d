@@ -1,4 +1,5 @@
 module sand.api;
+
 import sand.sane;
 import sand.saneopts;
 
@@ -12,6 +13,7 @@ import core.thread;
 
 
 /** The D interface to SANE */
+@system
 class Sane {
     int versionMajor, versionMinor, versionBuild;
     Device[] m_devices;
@@ -66,6 +68,7 @@ struct Parameters {
     uint bitdepth;
 }
 
+@system
 class Device {
     string name;
     string vendor;
@@ -179,6 +182,7 @@ enum ConstraintType {
     STRING_LIST = 3
 }
 
+@system
 class Option {
     int number;
     const string name;
